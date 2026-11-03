@@ -1,0 +1,80 @@
+# ColoStruct 15-field validation skeleton.
+# MVP policy: every field may legally be absent ("[not mentioned]" / null);
+# set required: true only when the clinical checklist demands a value.
+version: 1
+
+fields:
+  tumour_site:
+    type: string
+    required: false
+    default: null
+
+  operative_procedure:
+    type: string
+    required: false
+    default: null
+
+  tumour_dimension:
+    type: string
+    required: false
+    default: null
+
+  tumour_perforation:
+    type: string
+    required: false
+    default: null
+
+  relation_to_anterior_peritoneal_reflection:
+    type: string
+    required: false
+    default: null
+
+  plane_of_mesorectal_excision:
+    type: string
+    required: false
+    default: null
+
+  histological_tumour_type:
+    type: string
+    required: false
+    default: null
+
+  histological_tumour_grade:
+    type: string
+    required: false
+    default: null
+
+  extent_of_invasion:
+    type: string
+    required: false
+    default: null
+
+  lymphatic_and_venous_invasion:
+    type: string
+    required: false
+    default: null
+
+  perineural_invasion:
+    type: string
+    required: false
+    default: null
+
+  lymph_node_status:
+    type: string
+    required: false
+    default: null
+
+  tumour_deposits:
+    type: string
+    required: false
+    default: null
+
+  proximal_and_distal_margins:
+    type: string
+    required: false
+    default: null
+
+  circumferential_margin:
+    type: string
+    required: false
+    default: null
