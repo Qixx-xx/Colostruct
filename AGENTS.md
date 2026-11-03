@@ -1,7 +1,7 @@
 # AGENTS.md — ColoStruct
 
 ## Source of truth
-Use `PRD-ColoStruct-MVP.md` and `TechDesign-ColoStruct-MVP.md` in the repository root as the authoritative product and architecture sources. This is a colorectal pathology-report drafting project, **not** a SOAP-note or neurology project.
+Use `PRD-ColoStruct-MVP.md` indocs/product/PRD-ColoStruct-MVP.md and `TechDesign-ColoStruct-MVP.md` in docs/tech/TechDesign-ColoStruct-MVP.md as the authoritative product and architecture sources. This is a colorectal pathology-report drafting project, **not** a SOAP-note or neurology project.
 
 ## Product pipeline
 Ordered multi-segment audio upload → backend stitching with pydub (16 kHz mono WAV, 0.5 s silence between segments, per-segment offsets) → local faster-whisper ASR with global timestamps → deterministic de-noising → LLM preprocessing for slips of the tongue and temporal override → extraction of the 15 pathology fields → schema validation and post-hoc evidence audit → dual-column human review → Markdown and JSON export.
