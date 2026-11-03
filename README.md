@@ -4,13 +4,16 @@ ColoStruct 是一个面向结直肠外科医生的本地优先 Web 应用，可�
 
 ## 📁 项目目录结构
 
+
 ```text
 colostruct/
 ├── app.py                      # Streamlit 入口：路由、双栏布局
 ├── ui/
-│   ├── upload_panel.py         # 多段音频有序上传与拼接状态
-│   ├── review_panel.py         # 双栏审阅（音频/转写 ↔ 15 个字段）
-│   └── export_panel.py         # 导出按钮与格式选择
+│   ├── __init__.py         # 让 Python 识别为包
+│   ├── common.py           # 公共库（原 utils.py：字典、时间轴、卡片渲染、回调）
+│   ├── upload_panel.py         # 上传面板：多段音频有序上传与拼接状态
+│   ├── review_panel.py         # 审校面板：双栏审阅（音频/转写 ↔ 15 个字段）
+│   └── export_panel.py         # 导出面板：导出按钮与格式选择
 ├── core/
 │   ├── pipeline.py             # 编排：上传 → 拼接 → 转写 → 清洗 → LLM 预处理 → 抽取 → 校验
 │   ├── audio_merge.py          # 音频拼接 (pydub)，16 kHz 单声道，段间 0.5 秒静音
@@ -42,9 +45,12 @@ colostruct/
 │   ├── test_cleanup.py
 │   ├── test_validate.py
 │   └── test_export.py
-├── docs/                       # 项目文档与设计图
+├── docs/                       # 项目文档与里流程设计图
+├── design/                     # 前端页面设计图
+├── agent_notes/                # AI提示词及上下文存档
 ├── .env.example
 ├── .gitignore
 ├── Dockerfile
 ├── requirements.txt
+├── A_GROUP_README.md           #A组技术细节及AB具体工作划分
 └── README.md
