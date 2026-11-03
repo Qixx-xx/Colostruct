@@ -2,9 +2,18 @@
 .venv/
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.ruff_cache/
 .env
 .env.*
 !.env.example
+
+# Runtime storage (SQLite, uploaded/stitched audio, exports)
+storage/
+
+# Golden dataset: keep the directory placeholder, ignore its contents
+data/golden/*
+!data/golden/.gitkeep
 
 opencode.jsonc
 .opencode

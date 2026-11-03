@@ -20,6 +20,7 @@ audit will (correctly) flag it.
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,8 +51,14 @@ logger = logging.getLogger(__name__)
 #: on the caller's current working directory.
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 
-#: Stitched audio is persisted here; one sub-directory per case.
-STORAGE_AUDIO_DIR: Final[Path] = PROJECT_ROOT / "storage" / "audio"
+#: Stitched audio is persisted here; one sub-directory per case.  Set
+#: ``STORAGE_DIR`` to relocate the root (for example to a Docker volume).
+_STORAGE_SETTING: Final[str] = os.environ.get("STORAGE_DIR", "").strip()
+STORAGE_AUDIO_DIR: Final[Path] = (
+    Path(_STORAGE_SETTING).expanduser()
+    if _STORAGE_SETTING
+    else PROJECT_ROOT / "storage"
+) / "audio"
 
 
 @dataclass(frozen=True)
@@ -205,6 +212,10 @@ def process_case(
 
     case_id = uuid.uuid4().hex
     stitched_path = STORAGE_AUDIO_DIR / case_id / "stitched.wav"
+
+    # Fresh clones do not have storage/audio yet.  Create the case directory
+    # explicitly before audio_merge writes the stitched WAV.
+    stitched_path.parent.mkdir(parents=True, exist_ok=True)
 
     offsets = audio_merge.merge_audio_segments(
         audio_file_paths,
