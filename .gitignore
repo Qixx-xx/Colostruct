@@ -5,8 +5,10 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
 opencode.jsonc
 .opencode
+__pycache__
 
 # Archives and media must not be committed
 *.zip
