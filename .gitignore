@@ -1,6 +1,30 @@
+
 .venv/
 __pycache__/
 *.py[cod]
 .env
+.env.*
+!.env.example
 opencode.jsonc
 .opencode
+
+# Archives and media must not be committed
+*.zip
+*.wav
+*.mp3
+*.wma
+*.m4a
+*.flac
+*.aac
+*.ogg
+
+# Model weights and caches
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.gguf
+whisper_models/
+models/
+.cache/
+
