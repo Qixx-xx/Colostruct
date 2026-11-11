@@ -17,6 +17,7 @@ from core.asr import (
     ASRSegment,
     DecodeError,
     InferenceError,
+    InvalidBackendOutputError,
     ModelLoadError,
     UnsupportedFormatError,
     _FasterWhisperBackend,
@@ -140,6 +141,20 @@ class ASREngineFakeTests(unittest.TestCase):
         result = engine.transcribe(path)
         self.assertEqual(result.status, "failed")
         self.assertEqual(result.error_code, "INFERENCE_ERROR")
+
+    def test_backend_error_message_is_preserved(self):
+        path = self.make_audio()
+        engine, _ = self.make_engine(
+            transcribe_error=InvalidBackendOutputError(
+                "Whisper timestamp lies outside the provisional chunk range"
+            )
+        )
+        result = engine.transcribe(path)
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(result.error_code, "INVALID_BACKEND_OUTPUT")
+        self.assertIn("InvalidBackendOutputError", result.error or "")
+        self.assertIn("timestamp lies outside", result.error or "")
+        self.assertNotIn(path, result.error or "")
 
     def test_duration_far_from_last_end_is_not_partial(self):
         path = self.make_audio()

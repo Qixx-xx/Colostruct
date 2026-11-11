@@ -23,15 +23,20 @@ class OllamaConfig:
     timeout_seconds: int = 180
     temperature: float = 0.0
     keep_alive: str = "10m"
+    think: bool = False
 
     @classmethod
     def from_env(cls) -> "OllamaConfig":
+        think = os.getenv("COLOSTRUCT_OLLAMA_THINK", "").strip().lower() in {
+            "1", "true", "yes", "on"
+        }
         return cls(
             base_url=os.getenv("COLOSTRUCT_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
             model=os.getenv("COLOSTRUCT_LLM_MODEL", "qwen3:8b"),
             timeout_seconds=int(os.getenv("COLOSTRUCT_LLM_TIMEOUT", "180")),
             temperature=float(os.getenv("COLOSTRUCT_LLM_TEMPERATURE", "0")),
             keep_alive=os.getenv("COLOSTRUCT_OLLAMA_KEEP_ALIVE", "10m"),
+            think=think,
         )
 
 
@@ -50,6 +55,7 @@ class OllamaClient:
             ],
             "stream": False,
             "format": "json",
+            "think": self.config.think,
             "options": {"temperature": self.config.temperature},
             "keep_alive": self.config.keep_alive,
         }

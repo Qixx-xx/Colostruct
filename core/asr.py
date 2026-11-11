@@ -21,7 +21,7 @@ import math
 import os
 import platform
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -81,6 +81,13 @@ def _redact(message: str, audio_path: str | None) -> str:
         if candidate:
             message = message.replace(candidate, "<audio>")
     return message
+
+
+def _error_detail(exc: BaseException) -> str:
+    """Keep the exception type and a redacted message for diagnostics."""
+    name = type(exc).__name__
+    message = str(exc).strip()
+    return f"{name}: {message}" if message else name
 
 
 def _segment_failure_label(exc: BaseException) -> str:
@@ -199,6 +206,10 @@ class RawTranscription:
     duration: float | None = None
     duration_after_vad: float | None = None
     audio_format: str | None = None
+    #: Backend-owned provenance (for example model_id/revision/device).
+    #: Existing backends may leave this empty; the engine merges it into
+    #: ``ASRResult.run_metadata`` without changing the faster-whisper path.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ASRBackend(Protocol):
@@ -353,11 +364,12 @@ class ASREngine:
         started_at: str,
         wall_seconds: float,
         duration: float | None,
+        backend_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         prompt_hash = None
         if self.config.initial_prompt:
             prompt_hash = hashlib.sha256(self.config.initial_prompt.encode("utf-8")).hexdigest()
-        return {
+        metadata = {
             "audio_sha256": audio_sha256,
             "audio_bytes": audio_bytes,
             "audio_format": audio_format,
@@ -376,6 +388,16 @@ class ASREngine:
             "wall_seconds": round(wall_seconds, 3),
             "rtf": round(wall_seconds / duration, 3) if duration and duration > 0 else None,
         }
+        if backend_metadata:
+            if backend_metadata.get("backend"):
+                # The generic faster-whisper names are misleading for a
+                # Transformers backend; the backend-specific keys below are
+                # authoritative.
+                metadata.pop("faster_whisper_version", None)
+                metadata.pop("ctranslate2_version", None)
+                metadata.pop("model_snapshot", None)
+            metadata.update(backend_metadata)
+        return metadata
 
     def _failed(
         self,
@@ -449,12 +471,12 @@ class ASREngine:
             raw = self._backend.transcribe(audio_path, self.config)
         except ASRError as exc:
             return self._failed(
-                exc.code, _redact(type(exc).__name__, audio_path),
+                exc.code, _redact(_error_detail(exc), audio_path),
                 started_at, started_perf, audio_sha256, audio_bytes,
             )
         except Exception as exc:
             return self._failed(
-                "INFERENCE_ERROR", _redact(type(exc).__name__, audio_path),
+                "INFERENCE_ERROR", _redact(_error_detail(exc), audio_path),
                 started_at, started_perf, audio_sha256, audio_bytes,
             )
 
@@ -570,11 +592,12 @@ class ASREngine:
             language_probability=language_probability,
             duration=duration,
             duration_after_vad=duration_after_vad,
-            model=self.config.model_size,
+            model=raw.metadata.get("model_id") or self.config.model_size,
             config=self.config,
             elapsed_seconds=max(time.perf_counter() - started_perf, 0.0),
             run_metadata=self._run_metadata(
-                audio_sha256, audio_bytes, raw.audio_format, started_at, wall, duration
+                audio_sha256, audio_bytes, raw.audio_format, started_at, wall, duration,
+                backend_metadata=raw.metadata,
             ),
         )
 

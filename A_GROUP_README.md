@@ -569,6 +569,9 @@ $python = Join-Path $env:COLOSTRUCT_REPO_ROOT '.venv\Scripts\python.exe'
 # LLM/service contract tests (real backend schema)
 & $python -m unittest tests.test_a_group_llm_contract tests.test_service_result tests.test_result_contract tests.test_privacy_redaction -v
 
+# HF Whisper backend (optional; local checkpoint required for real inference)
+& $python -m unittest tests.test_asr_hf_whisper -v
+
 # Real schema / cleanup / validate integration (subprocess-isolated)
 & $python -m unittest tests.test_service_real_schema tests.test_cleanup_validate_integration -v
 
@@ -590,3 +593,43 @@ $env:ASR_REAL_AUDIO = '<authorised-audio-path>'
 
 Real patient audio must only be used with authorisation. Dependency installation
 and model downloads are not part of normal test runs.
+
+---
+
+## 18. Optional HF Whisper backend
+
+`core/asr_hf_whisper.py` implements the existing `ASRBackend` protocol using a
+local Transformers Whisper checkpoint. It is an opt-in backend; the default
+`ASREngine()` path remains faster-whisper.
+
+Runtime additions for this backend:
+
+```text
+torch==2.15.0+cpu
+transformers==4.49.0
+tokenizers==0.21.4
+huggingface-hub==0.27.1
+safetensors==0.8.0
+```
+
+Existing `numpy`, `av`, `pydantic`, `faster-whisper`, and `ctranslate2` remain
+required and unchanged. A local checkpoint avoids a model download:
+
+```python
+from core.asr import ASRConfig, ASREngine
+from core.asr_hf_whisper import HFWhisperBackend
+
+backend = HFWhisperBackend(
+    model_path="<local-whisper-checkpoint-directory>",
+    revision="<checkpoint-revision>",
+    device="cpu",
+    language="en",
+    local_files_only=True,
+)
+engine = ASREngine(ASRConfig(device="cpu", language="en"), backend=backend)
+```
+
+Do not commit local model paths or model weights. The backend keeps the
+configured chunk length except for a final tail shorter than the recursive
+split minimum; that tail is merged into the preceding window to avoid an
+isolated short-window timestamp failure.
