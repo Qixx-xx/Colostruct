@@ -71,6 +71,7 @@ MSG_MAPPING = {
     "值校验失败：值与引用的否定/肯定极性相反": "Value validation failed: The polarity (positive/negative) contradicts the quote."
 }
 
+
 # ------------------------------------------------------------------ 工具函数
 def hydrate_evidence(clean_segments):
     segs = {}
@@ -81,6 +82,7 @@ def hydrate_evidence(clean_segments):
         }
     return sorted(segs.values(), key=lambda s: s["start"])
 
+
 def build_segment_index(fields):
     idx = {}
     for fname, fd in fields.items():
@@ -88,29 +90,37 @@ def build_segment_index(fields):
             idx.setdefault(ev["segment_id"], []).append(fname)
     return idx
 
+
 # ------------------------------------------------------------------ 联动回调
 def _select_segment(sid: str):
     st.session_state.active_segment = sid if st.session_state.active_segment != sid else None
     fields = st.session_state.get("seg_to_fields", {}).get(sid, [])
     st.session_state.highlight_field = fields[0] if fields and st.session_state.active_segment else None
 
+
 def _select_evidence(fname: str, sid: str):
     st.session_state.active_segment = sid
     st.session_state.highlight_field = fname
 
+
 def _clear_highlight():
     st.session_state.active_segment = None
     st.session_state.highlight_field = None
+
 
 # ------------------------------------------------------------------ UI 组件
 def render_header(current_page):
     col_title, _ = st.columns([8, 2])
     with col_title:
         st.title(L["title"])
-        if current_page == "upload": st.markdown(f"🔵 **{L['nav_upload']}** ➔ ⚪ {L['nav_review']} ➔ ⚪ {L['nav_export']}")
-        elif current_page == "review": st.markdown(f"⚪ {L['nav_upload']} ➔ 🔵 **{L['nav_review']}** ➔ ⚪ {L['nav_export']}")
-        elif current_page == "export": st.markdown(f"⚪ {L['nav_upload']} ➔ ⚪ {L['nav_review']} ➔ 🔵 **{L['nav_export']}**")
+        if current_page == "upload":
+            st.markdown(f"🔵 **{L['nav_upload']}** ➔ ⚪ {L['nav_review']} ➔ ⚪ {L['nav_export']}")
+        elif current_page == "review":
+            st.markdown(f"⚪ {L['nav_upload']} ➔ 🔵 **{L['nav_review']}** ➔ ⚪ {L['nav_export']}")
+        elif current_page == "export":
+            st.markdown(f"⚪ {L['nav_upload']} ➔ ⚪ {L['nav_review']} ➔ 🔵 **{L['nav_export']}**")
     st.divider()
+
 
 TIMELINE_TEMPLATE = Template(r"""
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
@@ -148,8 +158,10 @@ TIMELINE_TEMPLATE = Template(r"""
 </script>
 """)
 
+
 def render_timeline(segments, active_sid, duration, hint: str, audio_url: str, audio_id: str):
-    segs = [{"segment_id": s["segment_id"], "start": s["start"], "end": s["end"], "quotes": s["quotes"]} for s in segments]
+    segs = [{"segment_id": s["segment_id"], "start": s["start"], "end": s["end"], "quotes": s["quotes"]} for s in
+            segments]
     components.html(
         TIMELINE_TEMPLATE.substitute(
             audio_id=audio_id, audio_url=audio_url or "", dur=duration,
@@ -160,6 +172,8 @@ def render_timeline(segments, active_sid, duration, hint: str, audio_url: str, a
         height=190, scrolling=False,
     )
 
+
+# ------------------------------------------------------------------ 字段卡片渲染
 def render_field_card(fname: str, fd: dict, active_sid: str | None, highlight: str | None, override: dict | None):
     label = FIELD_LABELS.get(fname, fname)
     status, value, vm = fd.get("status"), fd.get("value"), fd.get("validation_msg")
@@ -168,28 +182,65 @@ def render_field_card(fname: str, fd: dict, active_sid: str | None, highlight: s
     absent = (status == "absent") or (value is None)
     flagged = (status == "flagged") and not absent
 
-    if absent: bg, border, accent, badge, badge_color = "#f7f7f7", "#ececec", "#bdbdbd", L["badge_absent"], "#9e9e9e"
-    elif flagged: bg, border, accent, badge, badge_color = "#fff8e1", "#ffe082", "#f9a825", L["badge_flagged"], "#e65100"
-    else: bg, border, accent, badge, badge_color = "#f4f9f4", "#dbe9db", "#43a047", L["badge_ok"], "#2e7d32"
+    # 状态颜色
+    if absent:
+        bg, border, accent, badge, badge_color = "#f7f7f7", "#ececec", "#bdbdbd", L["badge_absent"], "#9e9e9e"
+    elif flagged:
+        bg, border, accent, badge, badge_color = "#fff8e1", "#ffe082", "#f9a825", L["badge_flagged"], "#e65100"
+    else:
+        bg, border, accent, badge, badge_color = "#f4f9f4", "#dbe9db", "#43a047", L["badge_ok"], "#2e7d32"
 
     if highlight == fname: border, accent = "#1e88e5", "#1e88e5"
 
-    value_html = f'<span style="color:#bdbdbd;font-style:italic;">{html.escape(L["ph_not_mentioned"])}</span>' if absent else f'<span style="color:#1a1a1a;font-size:15px;font-weight:600;">{html.escape(str(value))}</span>'
     override_badge = f'<span style="font-size:11px;color:#6a1b9a;margin-left:6px;">{L["override_badge"]}</span>' if override else ""
     target_prefix = f'📍 ' if highlight == fname else ""
 
+    # 1. 渲染卡片头部
     st.markdown(
-        f'<div style="padding:10px 14px;margin-bottom:6px;border-radius:8px;background:{bg};border:1px solid {border};border-left:4px solid {accent};">'
+        f'<div style="padding:10px 14px 4px 14px;margin-top:10px;border-radius:8px 8px 0 0;'
+        f'background:{bg};border:1px solid {border};border-bottom:none;border-left:4px solid {accent};">'
         f'<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">'
         f'<span style="font-weight:600;color:#37474f;font-size:13px;">{target_prefix}{html.escape(label)}{override_badge}</span>'
         f'<span style="font-size:11px;color:{badge_color};white-space:nowrap;">{badge}</span>'
-        f'</div><div style="margin-top:6px;">{value_html}</div></div>', unsafe_allow_html=True,
+        f'</div></div>', unsafe_allow_html=True,
     )
 
+    # 2. 渲染警告信息
     if flagged and vm:
         display_msg = MSG_MAPPING.get(vm, vm) if isinstance(vm, str) else vm.get("en", "")
-        st.markdown(f'<div style="margin:-2px 0 8px 4px;font-size:12px;color:#e65100;">⚠ {html.escape(display_msg)}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="margin:0;padding:0 14px 6px 14px;background:{bg};border-left:1px solid {border};border-right:1px solid {border};font-size:12px;color:#e65100;">⚠ {html.escape(display_msg)}</div>',
+            unsafe_allow_html=True)
 
+    # 3. 强制注入 CSS，让文本框变得极其明显（白底蓝框）
+    st.markdown("""
+        <style>
+        div[data-testid="stTextArea"] textarea {
+            background-color: #ffffff !important; 
+            border: 2px solid #1e88e5 !important; 
+            border-radius: 0 0 8px 8px !important;
+            color: #000000 !important;
+            font-size: 15px !important;
+            font-weight: 500 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 4. 渲染输入框
+    current = st.session_state.get(f"input_{fname}")
+    if current is None:
+        current = "" if value is None else str(value)
+
+    st.text_area(
+        label=f"edit_{fname}",
+        value=current,
+        key=f"input_{fname}",
+        label_visibility="collapsed",
+        placeholder="✏️ CLICK HERE TO EDIT..." if absent else "✏️ Edit here...",
+        height=68
+    )
+
+    # 5. 渲染证据按钮
     if evidence:
         cols = st.columns(min(len(evidence), 3))
         for i, ev in enumerate(evidence):
@@ -197,7 +248,3 @@ def render_field_card(fname: str, fd: dict, active_sid: str | None, highlight: s
                 st.button(f"▶ {ev['segment_id']}", key=f"ev_{fname}_{ev['segment_id']}",
                           type="primary" if ev["segment_id"] == active_sid else "secondary",
                           use_container_width=True, on_click=_select_evidence, args=(fname, ev["segment_id"]))
-
-    current = st.session_state.get(f"input_{fname}")
-    if current is None: current = "" if value is None else str(value)
-    st.text_area(fname, value=current, key=f"input_{fname}", label_visibility="collapsed", placeholder=L["ph_not_mentioned"] if absent else "", height=68)
