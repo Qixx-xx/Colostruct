@@ -6,11 +6,21 @@ requests
 python-dotenv
 
 # ==========================================
+# Backend API Gateway (api.py)
+# Without these a fresh clone cannot start the FastAPI service.
+# ==========================================
+fastapi>=0.110,<1
+uvicorn>=0.29,<1
+python-multipart>=0.0.9
+
+# ==========================================
 # Backend & Core Runtime
 # ==========================================
 pydantic>=2.0,<3
 pydub>=0.25.1
 PyYAML>=6.0
+# Bundled static ffmpeg, used when ffmpeg is not on PATH (common on Windows).
+imageio-ffmpeg>=0.5
 
 # ==========================================
 # ASR & Audio Processing (Group A)
@@ -19,6 +29,19 @@ faster-whisper>=1.0,<2
 ctranslate2>=4.0,<5
 av>=12.0
 numpy>=1.26,<3
+
+# ==========================================
+# ASR - Hugging Face Whisper backend (Group A)
+# Selected with COLOSTRUCT_ASR_BACKEND=hf. These are the versions
+# verified by Group A; the +cpu wheel is only published on the
+# PyTorch index, hence the extra index below.
+# ==========================================
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.15.0+cpu
+transformers==4.49.0
+tokenizers==0.21.4
+huggingface-hub==0.27.1
+safetensors==0.8.0
 
 # ==========================================
 # Tests / evaluation tooling
