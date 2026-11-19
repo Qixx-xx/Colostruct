@@ -21,10 +21,12 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 if __package__:
     from . import audio_merge, cleanup, validate
@@ -32,6 +34,8 @@ if __package__:
         ColoStructExtraction,
         Evidence,
         FieldModel,
+        FullClinicalReport,
+        NarrativeSection,
     )
 else:  # pragma: no cover - exercised when running ``python core/pipeline.py``
     import audio_merge
@@ -41,9 +45,16 @@ else:  # pragma: no cover - exercised when running ``python core/pipeline.py``
         ColoStructExtraction,
         Evidence,
         FieldModel,
+        FullClinicalReport,
+        NarrativeSection,
     )
 
-__all__ = ["STORAGE_AUDIO_DIR", "process_case"]
+__all__ = [
+    "STORAGE_AUDIO_DIR",
+    "process_case",
+    "process_case_real",
+    "process_full_report",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +258,397 @@ def process_case(
         "override_logs": dumped["override_logs"],
         "has_block": audited_result.has_block,
     }
+
+
+def _build_real_asr_engine() -> Any:
+    """Build the configured real ASR engine.
+
+    ``COLOSTRUCT_ASR_BACKEND=hf`` selects the optional Hugging Face checkpoint;
+    any other value keeps the A-group faster-whisper default.
+    """
+    backend_name = (
+        os.environ.get(
+            "COLOSTRUCT_ASR_BACKEND",
+            "faster-whisper",
+        )
+        .strip()
+        .lower()
+    )
+    device = (
+        (os.environ.get("WHISPER_DEVICE") or os.environ.get("ASR_DEVICE") or "cpu")
+        .strip()
+        .lower()
+    )
+    if device not in {"cpu", "cuda"}:
+        logger.warning("Unsupported ASR device %r; falling back to cpu", device)
+        device = "cpu"
+    language = (
+        os.environ.get("WHISPER_LANGUAGE") or os.environ.get("ASR_LANGUAGE") or ""
+    ).strip() or None
+
+    if backend_name in {"hf", "huggingface", "transformers"}:
+        from .asr import ASRConfig, ASREngine
+        from .asr_hf_whisper import (
+            DEFAULT_MODEL_ID,
+            DEFAULT_MODEL_REVISION,
+            HFWhisperBackend,
+        )
+
+        model_path = (
+            os.environ.get("WHISPER_MODEL_PATH")
+            or os.environ.get("WHISPER_MODEL_ID")
+            or DEFAULT_MODEL_ID
+        )
+        revision = os.environ.get("WHISPER_REVISION") or DEFAULT_MODEL_REVISION
+        local_only = os.environ.get(
+            "WHISPER_LOCAL_FILES_ONLY",
+            "0",
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        backend = HFWhisperBackend(
+            model_path=model_path,
+            revision=revision,
+            device=device,
+            language=language or "en",
+            local_files_only=local_only,
+        )
+        return ASREngine(
+            ASRConfig(device=device, language=language or "en"),
+            backend=backend,
+        )
+
+    from .asr import ASRConfig, ASREngine
+
+    return ASREngine(
+        ASRConfig(
+            model_size=os.environ.get("ASR_MODEL", "base"),
+            device=device,
+            compute_type=os.environ.get("ASR_COMPUTE_TYPE", "int8"),
+            language=language,
+        )
+    )
+
+
+def process_case_real(
+    audio_file_paths: list[str],
+    *,
+    asr_engine: Any | None = None,
+    llm_client: Any | None = None,
+    skip_pass_a: bool = False,
+) -> dict:
+    """Run the real ASR → Pass A → Pass B → audit pipeline for one case.
+
+    The function stitches the uploaded files (preserving the existing global
+    timestamp contract), transcribes the stitched audio, cleans the adapted
+    segments, runs the A-group LLM service, and audits the resulting 15-field
+    extraction.  It returns the same front-end payload shape as
+    :func:`process_case`.
+
+    Args:
+        audio_file_paths: Uploaded audio file paths in submission order.
+        asr_engine: Optional injected ASR engine (for tests or custom models).
+        llm_client: Optional injected Ollama-compatible client.
+        skip_pass_a: Skip Pass A and feed the original cleaned text to Pass B.
+
+    Raises:
+        ValueError: No input files.
+        ASRIntegrationError: ASR failed or produced no usable speech.
+        AGroupPipelineError: Pass B failed.
+    """
+    if not audio_file_paths:
+        raise ValueError("audio_file_paths must contain at least one audio file")
+
+    case_id = uuid.uuid4().hex
+    stitched_path = STORAGE_AUDIO_DIR / case_id / "stitched.wav"
+    stitched_path.parent.mkdir(parents=True, exist_ok=True)
+
+    audio_merge.merge_audio_segments(
+        audio_file_paths,
+        str(stitched_path),
+    )
+
+    engine = asr_engine or _build_real_asr_engine()
+    asr_result = engine.transcribe(str(stitched_path))
+
+    if __package__:
+        from .asr_adapter import adapt_asr_result
+        from .llm.service import extract_clinical_info_result
+    else:  # pragma: no cover - exercised when running ``python core/pipeline.py``
+        from asr_adapter import adapt_asr_result
+        from llm.service import extract_clinical_info_result
+
+    adapted = adapt_asr_result(asr_result)
+    clean_segments = cleanup.clean_transcript(adapted.segments)
+    if not clean_segments:
+        raise ValueError("clean_transcript returned no usable segments")
+
+    agroup_result = extract_clinical_info_result(
+        clean_segments=clean_segments,
+        client=llm_client,
+        skip_pass_a=skip_pass_a,
+    )
+    audited_result = validate.audit_extraction(
+        agroup_result.extraction,
+        clean_segments,
+    )
+    dumped = audited_result.model_dump(mode="json")
+
+    logger.info(
+        "Real case %s: ASR=%s model=%s segments=%d fields=%d has_block=%s",
+        case_id,
+        asr_result.status,
+        asr_result.model,
+        len(clean_segments),
+        len(dumped["fields"]),
+        audited_result.has_block,
+    )
+
+    return {
+        "audio_url": str(stitched_path),
+        "clean_segments": clean_segments,
+        "fields": dumped["fields"],
+        "override_logs": dumped["override_logs"],
+        "has_block": audited_result.has_block,
+    }
+
+
+#: Reference narrative text imported from the 36800.docx sample report.  It is
+#: used only when ``COLOSTRUCT_NARRATIVE_MOCK=1`` so that the full-report flow
+#: can be exercised without ASR or a running LLM.
+MOCK_NARRATIVE_TEXT: Final[dict[str, str]] = {
+    "macro": (
+        "1) Cut opened large intestine, 18.0 cm in length, 6.9 cm in transverse "
+        "dimension, with attached mesentery about 17 x 8 x 3 cm in size. There "
+        "is a malignant-looking tumour mass at the middle portion of the mucosa. "
+        "It is 4.0 cm in longitudinal dimension, 4.0 cm in transverse dimension "
+        "and more than 6.0 cm from proximal and distal resection margins. It is "
+        "located at the anti-mesenteric aspect. Cut surface of the tumour shows "
+        "firm pinkish tumour tissue invading to the muscle wall and there is "
+        "focal extension close to the peritoneal surface (inked black). Multiple "
+        "lymph nodes can be found in the mesentery with one of them showing "
+        "suspected tumour tissue on cut surface. (A) 2 tissue blocks, resection "
+        "margins. (B) Multiple tissue blocks, apical lymph node and vascular "
+        "apex. (C)to(F) Multiple tissue blocks, lymph nodes (suspicious lymph "
+        "node in 2 tissue blocks in C). (G)to(J) Multiple tissue blocks, tumour "
+        "with peritoneal surface. Figure 1 shows the submitted specimen. Figure "
+        "2 shows cut surface of tumour.\n\n"
+        "2) Distal margin. A ring of large intestinal wall 2.0 x 1.5 x 0.6 cm. "
+        "No obvious tumour tissue is found. All embedded in multiple tissue "
+        "blocks in 1 cassette. Figure 3 shows the submitted specimen."
+    ),
+    "micro": (
+        "1&2) Sections on the sigmoid tumour show moderately differentiated "
+        "adenocarcinoma. There are infiltrative complex and fused glandular "
+        "structure and surface villi that are lined by columnar epithelial "
+        "cells exhibiting moderate marked nuclear pleomorphism with prominent "
+        "mitosis. Desmoplastic stromal reaction is present. The tumour show "
+        "extension through the submucosa and muscularis propria into the "
+        "subserosa, with no evidence of peritoneal involvement. There is no "
+        "vascular permeation by tumour. No perineural invasion by tumour is "
+        "seen. The resection margins are clear. 16 lymph nodes are found. 2 of "
+        "them show metastatic carcinoma. The apical lymph nodes show no "
+        "metastasis."
+    ),
+}
+
+#: Prompt used for the A-group long-text polishing call.
+_NARRATIVE_SYSTEM_PROMPT: Final[str] = (
+    "You are a pathology report editor. Rewrite the raw ASR transcript into "
+    "clean, readable narrative text for the requested section. Preserve every "
+    "clinical fact, number, specimen identifier, and the original order. Do "
+    "not add, remove, summarise, or reinterpret findings. Keep numbered items "
+    "such as '1)' at the beginning of their lines. Return only a JSON object "
+    'of the form {"text": "<narrative>"}.'
+)
+
+#: Whisper is not thread-safe; serialise narrative transcription while the
+#: three report sections still run as separate worker threads.
+_NARRATIVE_ASR_LOCK = threading.Lock()
+_NARRATIVE_ASR_ENGINE: Any = None
+_NARRATIVE_ASR_CREATE_LOCK = threading.Lock()
+
+
+class _LockedASREngine:
+    """Serialise access to one ASR engine shared by all report threads.
+
+    Loading two Whisper models concurrently fails on some CUDA/Hugging Face
+    combinations, and a single ``ASREngine`` is not thread-safe. Wrapping the
+    shared engine keeps one model in memory and makes ``load``/``transcribe``
+    mutually exclusive.
+    """
+
+    def __init__(self, engine: Any) -> None:
+        self._engine = engine
+
+    def load(self, config: Any) -> None:
+        with _NARRATIVE_ASR_LOCK:
+            self._engine.load(config)
+
+    def transcribe(self, audio_path: str) -> Any:
+        with _NARRATIVE_ASR_LOCK:
+            return self._engine.transcribe(audio_path)
+
+
+def _narrative_mock_enabled() -> bool:
+    """Return whether narrative processing should use the 36800 mock text."""
+    return os.environ.get("COLOSTRUCT_NARRATIVE_MOCK", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _get_narrative_asr_engine() -> Any:
+    """Return a lazily-created, lock-wrapped ASR engine for all sections."""
+    global _NARRATIVE_ASR_ENGINE
+    if _NARRATIVE_ASR_ENGINE is None:
+        with _NARRATIVE_ASR_CREATE_LOCK:
+            if _NARRATIVE_ASR_ENGINE is None:
+                real_builder = globals().get("_build_real_asr_engine")
+                if callable(real_builder):
+                    engine = real_builder()
+                else:
+                    if __package__:
+                        from .asr import ASRConfig, ASREngine
+                    else:  # pragma: no cover
+                        from asr import ASRConfig, ASREngine
+
+                    engine = ASREngine(
+                        ASRConfig(
+                            model_size=os.environ.get("ASR_MODEL", "base"),
+                            device=(
+                                os.environ.get("ASR_DEVICE") or "cpu"
+                            ).strip().lower(),
+                            compute_type=os.environ.get("ASR_COMPUTE_TYPE", "int8"),
+                        )
+                    )
+                _NARRATIVE_ASR_ENGINE = _LockedASREngine(engine)
+    return _NARRATIVE_ASR_ENGINE
+
+
+def _transcribe_narrative(audio_path: str) -> str:
+    """Transcribe one macro/micro audio file into a single raw text block."""
+    engine = _get_narrative_asr_engine()
+    result = engine.transcribe(str(audio_path))
+
+    if result.status == "failed":
+        raise RuntimeError(f"ASR failed ({result.error_code or 'unknown error'})")
+
+    text = " ".join(
+        segment.text.strip() for segment in result.segments if segment.text.strip()
+    ).strip()
+    if not text:
+        raise ValueError("ASR produced no narrative text")
+    return text
+
+
+def _polish_narrative(section: str, raw_text: str) -> str:
+    """Call the A-group Ollama client to polish one narrative section."""
+    if __package__:
+        from .llm.client import OllamaClient
+    else:  # pragma: no cover
+        from llm.client import OllamaClient
+
+    client = OllamaClient()
+    response = client.generate_json(
+        system=_NARRATIVE_SYSTEM_PROMPT,
+        user=f"Section: {section}\n\nRaw ASR transcript:\n{raw_text}",
+    )
+    text = response.get("text") if isinstance(response, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("LLM narrative response has no usable 'text'")
+    return text
+
+
+def _process_narrative(section: str, audio_path: str | None) -> NarrativeSection:
+    """Produce one narrative section, converting every failure to ``failed``."""
+    if not audio_path:
+        return NarrativeSection(status="absent")
+
+    try:
+        if _narrative_mock_enabled():
+            raw_text = MOCK_NARRATIVE_TEXT[section]
+            polished = raw_text
+        else:
+            raw_text = _transcribe_narrative(str(audio_path))
+            polished = _polish_narrative(section, raw_text)
+
+        cleaned = cleanup.clean_narrative_output(polished)
+        validate.validate_narrative(cleaned, raw_text)
+        return NarrativeSection(text=cleaned, status="success")
+    except Exception:
+        logger.exception("Narrative processing failed for section %s", section)
+        return NarrativeSection(status="failed")
+
+
+def _process_diagnosis(audio_path: str) -> ColoStructExtraction:
+    """Run the diagnosis path and return its structured extraction."""
+    real_processor = globals().get("process_case_real")
+    if callable(real_processor):
+        # Reuse the single shared engine instead of loading a second Whisper
+        # model concurrently with the narrative threads.
+        payload = real_processor(
+            [str(audio_path)], asr_engine=_get_narrative_asr_engine()
+        )
+    else:
+        payload = process_case([str(audio_path)])
+
+    return ColoStructExtraction.model_validate(
+        {
+            "fields": payload.get("fields", {}),
+            "override_logs": payload.get("override_logs", []),
+            "has_block": payload.get("has_block", False),
+        }
+    )
+
+
+def process_full_report(
+    diag_file: str,
+    macro_file: str | None = None,
+    micro_file: str | None = None,
+) -> FullClinicalReport:
+    """Build the complete report from diagnosis, macro, and micro audio.
+
+    The three sections are processed concurrently with a
+    :class:`~concurrent.futures.ThreadPoolExecutor`.  Diagnosis runs the
+    structured 15-field pipeline, while macro and micro are transcribed and
+    polished into narrative sections.
+
+    Args:
+        diag_file: Path to the diagnosis audio (required).
+        macro_file: Optional path to the macroscopic examination audio.
+        micro_file: Optional path to the microscopic examination audio.
+
+    Returns:
+        A :class:`~core.pathology_schema.FullClinicalReport` containing the
+        diagnosis extraction and both narrative sections.  A failed section is
+        represented by ``status="failed"`` rather than raising.
+
+    Raises:
+        ValueError: If ``diag_file`` is empty.
+    """
+    if not diag_file:
+        raise ValueError("diag_file is required")
+
+    with ThreadPoolExecutor(
+        max_workers=3, thread_name_prefix="colostruct-report"
+    ) as executor:
+        diagnosis_future = executor.submit(_process_diagnosis, diag_file)
+        macro_future = executor.submit(_process_narrative, "macro", macro_file)
+        micro_future = executor.submit(_process_narrative, "micro", micro_file)
+
+        try:
+            diagnosis = diagnosis_future.result()
+        except Exception:
+            logger.exception("Diagnosis pipeline failed; returning empty extraction")
+            diagnosis = ColoStructExtraction()
+            # Fail closed: an empty diagnosis must not be exportable.
+            diagnosis.has_block = True
+
+        macro = macro_future.result()
+        micro = micro_future.result()
+
+    return FullClinicalReport(diagnosis=diagnosis, macro=macro, micro=micro)
 
 
 if __name__ == "__main__":

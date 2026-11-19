@@ -14,6 +14,7 @@ Contract summary (see ``P3_B_ASR_CONTRACT_DESIGN.md``):
 * ``duration``/``duration_after_vad`` are recorded but never used to judge
   transcript completeness.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -21,7 +22,7 @@ import math
 import os
 import platform
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -83,6 +84,20 @@ def _redact(message: str, audio_path: str | None) -> str:
     return message
 
 
+def _error_detail(exc: BaseException) -> str:
+    """Keep sensitive free text out of results while preserving safe diagnostics.
+
+    Backend exception messages may contain transcript fragments, file paths, or
+    other sensitive data.  ``InvalidBackendOutputError`` is the one internal
+    exception whose message contains only stable timestamp/shape diagnostics;
+    all other exceptions expose only their type.
+    """
+    if isinstance(exc, InvalidBackendOutputError):
+        message = str(exc).strip()
+        return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+    return type(exc).__name__
+
+
 def _segment_failure_label(exc: BaseException) -> str:
     """Return a stable, non-free-text reason for a dropped segment."""
     if isinstance(exc, KeyError):
@@ -114,7 +129,11 @@ class ASRConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     model_size: str = Field(default="base", min_length=1)
-    device: Literal["cpu", "cuda"] = "cpu"
+    # Device is configuration, not a source-code constant: ASR_DEVICE=cuda
+    # enables GPU on this machine while an unset environment keeps CPU.
+    device: Literal["cpu", "cuda"] = Field(
+        default_factory=lambda: (os.environ.get("ASR_DEVICE") or "cpu").strip().lower()
+    )
     compute_type: str = Field(default="int8", min_length=1)
     beam_size: int = Field(default=5, ge=1)
     vad_filter: bool = True
@@ -167,7 +186,9 @@ class ASRResult(BaseModel):
     elapsed_seconds: float = Field(ge=0.0)
     run_metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("language_probability", "duration", "duration_after_vad", "elapsed_seconds")
+    @field_validator(
+        "language_probability", "duration", "duration_after_vad", "elapsed_seconds"
+    )
     @classmethod
     def _numbers_finite(cls, value: float | None) -> float | None:
         if value is None:
@@ -199,6 +220,10 @@ class RawTranscription:
     duration: float | None = None
     duration_after_vad: float | None = None
     audio_format: str | None = None
+    #: Backend-owned provenance (for example model_id/revision/device).
+    #: Existing backends may leave this empty; the engine merges it into
+    #: ``ASRResult.run_metadata`` without changing the faster-whisper path.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class ASRBackend(Protocol):
@@ -218,7 +243,11 @@ def _probe_audio(audio_path: str) -> tuple[str | None, float | None]:
     try:
         with av.open(audio_path) as container:
             codec = next(
-                (stream.codec_context.name for stream in container.streams if stream.type == "audio"),
+                (
+                    stream.codec_context.name
+                    for stream in container.streams
+                    if stream.type == "audio"
+                ),
                 None,
             )
             fmt = container.format.name if container.format else None
@@ -321,9 +350,13 @@ class ASREngine:
     without retrying. The engine is not thread-safe; callers serialise calls.
     """
 
-    def __init__(self, config: ASRConfig | None = None, backend: ASRBackend | None = None) -> None:
+    def __init__(
+        self, config: ASRConfig | None = None, backend: ASRBackend | None = None
+    ) -> None:
         self.config = config or ASRConfig()
-        self._backend: ASRBackend = backend if backend is not None else _FasterWhisperBackend()
+        self._backend: ASRBackend = (
+            backend if backend is not None else _FasterWhisperBackend()
+        )
         self._loaded = False
         self._load_error: str | None = None
 
@@ -353,11 +386,14 @@ class ASREngine:
         started_at: str,
         wall_seconds: float,
         duration: float | None,
+        backend_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         prompt_hash = None
         if self.config.initial_prompt:
-            prompt_hash = hashlib.sha256(self.config.initial_prompt.encode("utf-8")).hexdigest()
-        return {
+            prompt_hash = hashlib.sha256(
+                self.config.initial_prompt.encode("utf-8")
+            ).hexdigest()
+        metadata = {
             "audio_sha256": audio_sha256,
             "audio_bytes": audio_bytes,
             "audio_format": audio_format,
@@ -374,8 +410,20 @@ class ASREngine:
             "started_at": started_at,
             "finished_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             "wall_seconds": round(wall_seconds, 3),
-            "rtf": round(wall_seconds / duration, 3) if duration and duration > 0 else None,
+            "rtf": round(wall_seconds / duration, 3)
+            if duration and duration > 0
+            else None,
         }
+        if backend_metadata:
+            if backend_metadata.get("backend"):
+                # The generic faster-whisper names are misleading for a
+                # Transformers backend; the backend-specific keys below are
+                # authoritative.
+                metadata.pop("faster_whisper_version", None)
+                metadata.pop("ctranslate2_version", None)
+                metadata.pop("model_snapshot", None)
+            metadata.update(backend_metadata)
+        return metadata
 
     def _failed(
         self,
@@ -421,44 +469,70 @@ class ASREngine:
 
         if not os.path.isfile(audio_path):
             return self._failed(
-                "AUDIO_NOT_FOUND", "audio file not found",
-                started_at, started_perf, None, None,
+                "AUDIO_NOT_FOUND",
+                "audio file not found",
+                started_at,
+                started_perf,
+                None,
+                None,
             )
         try:
             audio_bytes = os.path.getsize(audio_path)
         except OSError:
             return self._failed(
-                "AUDIO_NOT_FOUND", "audio file is not readable",
-                started_at, started_perf, None, None,
+                "AUDIO_NOT_FOUND",
+                "audio file is not readable",
+                started_at,
+                started_perf,
+                None,
+                None,
             )
         if audio_bytes == 0:
             return self._failed(
-                "EMPTY_AUDIO", "audio file is empty", started_at, started_perf,
-                _sha256(audio_path), audio_bytes,
+                "EMPTY_AUDIO",
+                "audio file is empty",
+                started_at,
+                started_perf,
+                _sha256(audio_path),
+                audio_bytes,
             )
 
         audio_sha256 = _sha256(audio_path)
         load_error = self._ensure_loaded()
         if load_error is not None:
             return self._failed(
-                "MODEL_LOAD_FAILED", _redact(load_error, audio_path),
-                started_at, started_perf, audio_sha256, audio_bytes,
+                "MODEL_LOAD_FAILED",
+                _redact(load_error, audio_path),
+                started_at,
+                started_perf,
+                audio_sha256,
+                audio_bytes,
             )
 
         try:
             raw = self._backend.transcribe(audio_path, self.config)
         except ASRError as exc:
             return self._failed(
-                exc.code, _redact(type(exc).__name__, audio_path),
-                started_at, started_perf, audio_sha256, audio_bytes,
+                exc.code,
+                _redact(_error_detail(exc), audio_path),
+                started_at,
+                started_perf,
+                audio_sha256,
+                audio_bytes,
             )
         except Exception as exc:
             return self._failed(
-                "INFERENCE_ERROR", _redact(type(exc).__name__, audio_path),
-                started_at, started_perf, audio_sha256, audio_bytes,
+                "INFERENCE_ERROR",
+                _redact(_error_detail(exc), audio_path),
+                started_at,
+                started_perf,
+                audio_sha256,
+                audio_bytes,
             )
 
-        return self._build_result(raw, started_at, started_perf, audio_sha256, audio_bytes)
+        return self._build_result(
+            raw, started_at, started_perf, audio_sha256, audio_bytes
+        )
 
     def _build_result(
         self,
@@ -471,7 +545,9 @@ class ASREngine:
         wall = time.perf_counter() - started_perf
         warnings: list[str] = []
         duration = _finite_or_none(raw.duration, "duration", warnings)
-        duration_after_vad = _finite_or_none(raw.duration_after_vad, "duration_after_vad", warnings)
+        duration_after_vad = _finite_or_none(
+            raw.duration_after_vad, "duration_after_vad", warnings
+        )
         language_probability = _finite_or_none(
             raw.language_probability, "language_probability", warnings
         )
@@ -483,8 +559,12 @@ class ASREngine:
         raw_segments = raw.segments
         if not isinstance(raw_segments, list):
             return self._failed(
-                "INVALID_BACKEND_OUTPUT", "backend segments is not a list",
-                started_at, started_perf, audio_sha256, audio_bytes,
+                "INVALID_BACKEND_OUTPUT",
+                "backend segments is not a list",
+                started_at,
+                started_perf,
+                audio_sha256,
+                audio_bytes,
                 duration=duration,
                 audio_format=raw.audio_format,
                 language=raw.language,
@@ -518,9 +598,14 @@ class ASREngine:
 
         if raw_segments and not valid:
             return self._failed(
-                "INVALID_BACKEND_OUTPUT", "every backend segment had invalid timestamps",
-                started_at, started_perf, audio_sha256, audio_bytes,
-                warnings=warnings, duration=duration,
+                "INVALID_BACKEND_OUTPUT",
+                "every backend segment had invalid timestamps",
+                started_at,
+                started_perf,
+                audio_sha256,
+                audio_bytes,
+                warnings=warnings,
+                duration=duration,
                 audio_format=raw.audio_format,
                 language=raw.language,
                 language_probability=raw.language_probability,
@@ -537,17 +622,22 @@ class ASREngine:
                         text=text,
                     )
                 )
-            except Exception as exc:  # defensive: one bad segment must not sink the batch
+            except (
+                Exception
+            ) as exc:  # defensive: one bad segment must not sink the batch
                 dropped += 1
-                warnings.append(
-                    f"dropped segment {index}: {type(exc).__name__}"
-                )
+                warnings.append(f"dropped segment {index}: {type(exc).__name__}")
 
         if raw_segments and not segments:
             return self._failed(
-                "INVALID_BACKEND_OUTPUT", "no usable segment after validation",
-                started_at, started_perf, audio_sha256, audio_bytes,
-                warnings=warnings, duration=duration,
+                "INVALID_BACKEND_OUTPUT",
+                "no usable segment after validation",
+                started_at,
+                started_perf,
+                audio_sha256,
+                audio_bytes,
+                warnings=warnings,
+                duration=duration,
                 audio_format=raw.audio_format,
                 language=raw.language,
                 language_probability=raw.language_probability,
@@ -570,11 +660,17 @@ class ASREngine:
             language_probability=language_probability,
             duration=duration,
             duration_after_vad=duration_after_vad,
-            model=self.config.model_size,
+            model=raw.metadata.get("model_id") or self.config.model_size,
             config=self.config,
             elapsed_seconds=max(time.perf_counter() - started_perf, 0.0),
             run_metadata=self._run_metadata(
-                audio_sha256, audio_bytes, raw.audio_format, started_at, wall, duration
+                audio_sha256,
+                audio_bytes,
+                raw.audio_format,
+                started_at,
+                wall,
+                duration,
+                backend_metadata=raw.metadata,
             ),
         )
 

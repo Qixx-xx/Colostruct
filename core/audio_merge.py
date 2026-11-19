@@ -22,9 +22,30 @@ read, a ``ValueError`` is raised because there is no timeline to produce.
 from __future__ import annotations
 
 import logging
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 from pydub import AudioSegment
+
+# Allow an explicit ffmpeg or the bundled imageio-ffmpeg binary to be used
+# without relying on PATH.  The bundled binary is a static build, which avoids
+# DLL issues when conda installs ffmpeg outside the environment's path.
+_ffmpeg_binary = os.environ.get("FFMPEG_BINARY", "").strip()
+if not _ffmpeg_binary or not Path(_ffmpeg_binary).is_file():
+    try:
+        import imageio_ffmpeg
+
+        _ffmpeg_binary = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        _ffmpeg_binary = ""
+
+if _ffmpeg_binary and Path(_ffmpeg_binary).is_file():
+    AudioSegment.converter = _ffmpeg_binary
+    _ffprobe_binary = Path(_ffmpeg_binary).with_name("ffprobe.exe")
+    if _ffprobe_binary.is_file():
+        AudioSegment.ffprobe = str(_ffprobe_binary)
 
 logger = logging.getLogger(__name__)
 
@@ -77,13 +98,59 @@ def _normalise(segment: AudioSegment) -> AudioSegment:
     )
 
 
+def _decode_with_ffmpeg(path: Path) -> AudioSegment | None:
+    """Decode a non-WAV file through the configured ffmpeg binary.
+
+    pydub's generic ``from_file`` calls ``ffprobe`` before decoding.  The
+    bundled imageio-ffmpeg wheel ships ffmpeg but not ffprobe, so decoding
+    through a temporary WAV avoids that optional dependency while keeping the
+    same pydub normalization path.
+    """
+    if not _ffmpeg_binary or not Path(_ffmpeg_binary).is_file():
+        return None
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="colostruct-decode-") as tmp:
+            decoded = Path(tmp) / "decoded.wav"
+            result = subprocess.run(
+                [
+                    _ffmpeg_binary,
+                    "-y",
+                    "-i",
+                    str(path),
+                    "-vn",
+                    "-ac",
+                    "1",
+                    "-ar",
+                    str(TARGET_FRAME_RATE),
+                    "-c:a",
+                    "pcm_s16le",
+                    str(decoded),
+                ],
+                capture_output=True,
+                timeout=120,
+                check=False,
+            )
+            if result.returncode != 0 or not decoded.is_file():
+                logger.warning(
+                    "ffmpeg could not decode %s (exit=%s)",
+                    path,
+                    result.returncode,
+                )
+                return None
+            return AudioSegment.from_wav(str(decoded))
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("ffmpeg decode failed for %s: %s", path, exc)
+        return None
+
+
 def _load_segment(path: Path) -> AudioSegment | None:
     """Load and normalise one audio file, or return ``None`` when unusable.
 
     A failure in one file must not abort the whole case.  The exception is
     logged with the file path and type, and the caller continues with the next
-    upload.  Non-WAV containers (for example MP3 or M4A) require ``ffmpeg`` on
-    ``PATH``; WAV files are decoded by pydub directly.
+    upload.  WAV files are decoded by pydub directly; other containers are
+    decoded through the configured ffmpeg binary first.
 
     Args:
         path: Path to the uploaded audio file.
@@ -93,7 +160,21 @@ def _load_segment(path: Path) -> AudioSegment | None:
         missing, corrupt, empty, or cannot be decoded.
     """
     try:
-        segment = AudioSegment.from_file(str(path))
+        if path.suffix.lower() == ".wav":
+            try:
+                segment = AudioSegment.from_file(str(path), format="wav")
+            except Exception:
+                # A Streamlit temporary file may carry a .wav name while the
+                # uploaded bytes are actually WMA/MP3; let ffmpeg sniff it.
+                segment = _decode_with_ffmpeg(path)
+                if segment is None:
+                    raise
+        else:
+            segment = _decode_with_ffmpeg(path)
+            if segment is None:
+                # Last-resort compatibility for installs with system ffmpeg
+                # and ffprobe on PATH.
+                segment = AudioSegment.from_file(str(path))
         if len(segment) == 0:
             logger.warning("Skipping empty audio segment: %s", path)
             return None

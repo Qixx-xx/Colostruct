@@ -76,7 +76,9 @@ __all__ = [
     "VALUE_NUMBER_MSG",
     "VALUE_POLARITY_MSG",
     "VALUE_SUPPORT_MSG",
+    "NarrativeValidationError",
     "audit_extraction",
+    "validate_narrative",
 ]
 
 logger = logging.getLogger(__name__)
@@ -1170,6 +1172,58 @@ def audit_extraction(
         )
 
     return llm_result
+
+
+class NarrativeValidationError(ValueError):
+    """Raised when a polished narrative drifts too far from its ASR source.
+
+    The long-text polish pass may only clean up wording; it must not grow the
+    text by inventing content. ``validate_narrative`` raises this error when
+    the cleaned text is more than 20% longer than the ASR transcript.
+    """
+
+
+def validate_narrative(llm_text: str, raw_asr_text: str) -> bool:
+    """Check that a polished narrative did not grow beyond its ASR source.
+
+    A polish pass is allowed to fix punctuation, casing, and disfluencies, but
+    not to add clinical content. Length is used as a cheap, deterministic
+    guard: if the cleaned narrative is more than 20% longer than the raw ASR
+    text, the pass is rejected and the caller should mark the section
+    ``failed``.
+
+    Args:
+        llm_text: Polished narrative returned by the LLM (after cleanup).
+        raw_asr_text: Raw ASR transcript for the same section.
+
+    Returns:
+        ``True`` when the length check passes.
+
+    Raises:
+        TypeError: If either argument is not a string.
+        NarrativeValidationError: If the ASR text or narrative is empty, or
+            the narrative is more than 20% longer than the ASR transcript.
+    """
+    if not isinstance(llm_text, str) or not isinstance(raw_asr_text, str):
+        raise TypeError("llm_text and raw_asr_text must be strings")
+
+    raw = raw_asr_text.strip()
+    polished = llm_text.strip()
+
+    if not raw:
+        raise NarrativeValidationError("raw ASR text is empty")
+    if not polished:
+        raise NarrativeValidationError("polished narrative is empty")
+
+    limit = len(raw) * 1.2
+    if len(polished) > limit:
+        raise NarrativeValidationError(
+            "polished narrative is "
+            f"{len(polished)} characters vs {len(raw)} ASR characters "
+            "(more than 20% longer)"
+        )
+
+    return True
 
 
 if __name__ == "__main__":

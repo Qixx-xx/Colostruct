@@ -59,7 +59,7 @@ Example
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from pydantic import (
     AliasChoices,
@@ -75,6 +75,8 @@ __all__ = [
     "ColoStructExtraction",
     "Evidence",
     "FieldModel",
+    "FullClinicalReport",
+    "NarrativeSection",
     "OverrideLog",
     "StatusEnum",
 ]
@@ -637,6 +639,59 @@ class ColoStructExtraction(_ColoStructModel):
                 continue
             normalised.append(item)
         return normalised
+
+
+NarrativeStatus = Literal["success", "failed", "absent"]
+
+
+class NarrativeSection(_ColoStructModel):
+    """A free-text narrative section of the pathology report.
+
+    Macro (macroscopic examination) and micro (microscopic examination) are
+    long-form narratives rather than the 15 structured diagnosis fields, so
+    they keep their own text and status instead of ``FieldModel``.
+
+    Attributes:
+        text: Cleaned narrative text. ``None`` when the section is absent or
+            could not be produced.
+        status: ``success`` when the narrative passed validation, ``failed``
+            when ASR, polishing, or validation failed, and ``absent`` when the
+            section was not uploaded.
+    """
+
+    text: str | None = Field(
+        default=None,
+        description="Cleaned narrative text; None when absent or failed.",
+    )
+    status: NarrativeStatus = Field(
+        default="absent",
+        description=(
+            "success: text passed validation; failed: ASR/LLM/validation "
+            "error; absent: no audio supplied for this section."
+        ),
+    )
+
+
+class FullClinicalReport(_ColoStructModel):
+    """Top-level report for one case: structured diagnosis plus narratives.
+
+    Attributes:
+        diagnosis: The audited 15-field colorectal pathology extraction.
+        macro: Macroscopic examination narrative.
+        micro: Microscopic examination narrative.
+    """
+
+    diagnosis: ColoStructExtraction = Field(
+        description="Structured 15-field diagnosis extraction for this case."
+    )
+    macro: NarrativeSection = Field(
+        default_factory=NarrativeSection,
+        description="Macroscopic examination narrative section.",
+    )
+    micro: NarrativeSection = Field(
+        default_factory=NarrativeSection,
+        description="Microscopic examination narrative section.",
+    )
 
 
 if __name__ == "__main__":
