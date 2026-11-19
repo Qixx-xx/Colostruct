@@ -40,12 +40,11 @@ colostruct/
 │   ├── HOTWORDS.csv            # 结直肠术语词典
 │   └── corrections.csv         # 表层形式映射
 ├── storage/                    # 运行时生成（已被 .gitignore 忽略）
-│   ├── colostruct.db           # SQLite
-│   ├── audio/                  # 上传片段 + 拼接音频
-│   └── exports/                # 导出文件
+│   └── audio/                  # 上传片段 + 拼接音频
 ├── eval/
 │   └── run_f1.py               # 15 个字段的 F1 计算
 ├── tests/
+│   ├── __init__.py
 │   ├── conftest.py
 │   ├── fake_asr_backend.py
 │   ├── test_asr_adapter.py
