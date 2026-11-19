@@ -58,6 +58,7 @@ __all__ = [
     "YUE_FILLER_PHRASES",
     "YUE_PROTECTED_PHRASES",
     "YUE_SENTENCE_FINAL_PARTICLES",
+    "clean_narrative_output",
     "clean_transcript",
 ]
 
@@ -297,6 +298,74 @@ def clean_transcript(segments: list[dict]) -> list[dict]:
         cleaned_segments.append(cleaned_segment)
 
     return cleaned_segments
+
+
+#: Markdown code fences emitted by chat models around narrative text.  The
+#: language tag (for example ``markdown``) is removed with the fence.
+_NARRATIVE_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"```[A-Za-z0-9_-]*")
+
+#: Assistant preamble lines such as "好的，以下是大体检查：" or
+#: "Here is the polished report:".  Only lines that *start* with one of these
+#: markers and end with a colon are removed, so clinical headings like
+#: "MACROSCOPIC EXAMINATION:" are preserved.
+_NARRATIVE_PREAMBLE_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\s*(?:好的|当然|没问题|以下是|下面是|here is|here's|sure|certainly)"
+    r"[^\n]{0,40}[:：]\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+#: Closing chatter that adds no clinical content.
+_NARRATIVE_CLOSING_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\s*(?:希望[^\n]{0,40}|如需[^\n]{0,40}|如有[^\n]{0,40}"
+    r"|if you need[^\n]{0,40}|hope this[^\n]{0,40}|let me know[^\n]{0,40})\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def clean_narrative_output(text: str) -> str:
+    """Strip chat wrapper noise from an LLM narrative response.
+
+    The long-text polishing stage may return Markdown fences, a polite
+    preamble, or closing chatter around the actual report. This function
+    removes only those wrappers. It deliberately keeps anatomical structure,
+    including numbered items such as ``1)`` and ``2)``, and does not rewrite
+    clinical content.
+
+    Args:
+        text: Raw LLM response.
+
+    Returns:
+        The narrative text without code fences, preamble, or closing chatter,
+        with surrounding blank lines collapsed.
+
+    Raises:
+        TypeError: If ``text`` is not a string.
+    """
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+
+    value = text.replace("\r\n", "\n").replace("\r", "\n")
+    value = _NARRATIVE_FENCE_RE.sub("", value)
+    value = _NARRATIVE_PREAMBLE_RE.sub("", value)
+    value = _NARRATIVE_CLOSING_RE.sub("", value)
+
+    lines = [line.rstrip() for line in value.split("\n")]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    cleaned: list[str] = []
+    blank_seen = False
+    for line in lines:
+        if line.strip():
+            cleaned.append(line)
+            blank_seen = False
+        elif not blank_seen:
+            cleaned.append("")
+            blank_seen = True
+
+    return "\n".join(cleaned).strip()
 
 
 if __name__ == "__main__":
