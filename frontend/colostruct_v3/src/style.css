@@ -1,0 +1,182 @@
+/* ==========================================================================
+   style.css —— 基础样式 + 面板之间共用的小工具类 + 导出预览的文档样式
+
+   对应：
+   - legacy_mvp/ui/export_panel.py 第 69-80 行那段 css_watermark（.watermark-bg 等）
+   - Streamlit 原本自动提供的页面基础排版
+
+   组件的局部样式写在各自 .vue 的 <style scoped> 里；这里只放：
+   1) 全局重置与基础排版
+   2) 多个面板都要用的工具类（.section-title / .error-box / .btn ...）
+   3) 导出预览的 .md-* —— 这些是 v-html 注入的，必须全局才生效
+   ========================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #37474f;
+  background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Streamlit 默认在内容区留白，这里复刻一个相近的观感 */
+#app {
+  padding: 2rem 1rem 4rem;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   通用工具类
+   -------------------------------------------------------------------------- */
+
+.page-sub {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 18px 0 4px;
+  color: #263238;
+}
+
+.section-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 22px 0 8px;
+  color: #37474f;
+}
+
+.caption {
+  font-size: 0.9rem;
+  color: #757575;
+  margin: 4px 0 15px;
+  line-height: 1.5;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #e6e6e6;
+  margin: 20px 0;
+}
+
+/* 提示框：对应 st.error / st.success / st.info / st.warning */
+.error-box {
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: #ffebee;
+  border-left: 4px solid #e53935;
+  border-radius: 4px;
+  color: #c62828;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.success-box {
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: #e8f5e9;
+  border-left: 4px solid #43a047;
+  border-radius: 4px;
+  color: #2e7d32;
+  font-size: 13px;
+}
+
+.info-box {
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: #e3f2fd;
+  border-left: 4px solid #1e88e5;
+  border-radius: 4px;
+  color: #1565c0;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.warn-box {
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: #fff8e1;
+  border-left: 4px solid #f9a825;
+  border-radius: 4px;
+  color: #e65100;
+  font-size: 13px;
+}
+
+/* 次要按钮：对应 st.button 的默认（非 primary）样式 */
+.btn {
+  display: inline-block;
+  width: 100%;
+  padding: 11px 14px;
+  margin-top: 10px;
+  background: #ffffff;
+  color: #37474f;
+  border: 1px solid #cfd8dc;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.btn:hover {
+  background: #f5f7f8;
+  border-color: #b0bec5;
+}
+
+.btn.small {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* --------------------------------------------------------------------------
+   导出预览的文档排版
+   注意：这些 class 是用 v-html 注入的，v-html 的内容拿不到 scoped 属性，
+   所以必须放在全局样式里，否则预览区会完全没样式。
+   -------------------------------------------------------------------------- */
+.watermark-bg {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' version='1.1' height='100px' width='250px'><text transform='translate(20, 60) rotate(-25)' fill='rgba(200, 200, 200, 0.2)' font-size='24'>AI-Assisted Draft</text></svg>");
+  padding: 30px;
+  border-radius: 5px;
+}
+
+.md-h1 {
+  color: #1e88e5;
+  border-bottom: 2px solid #1e88e5;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+  font-size: 1.5rem;
+}
+
+.md-h2 {
+  color: #333;
+  margin-top: 20px;
+  margin-bottom: 5px;
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.md-h3 {
+  color: #555;
+  margin-top: 15px;
+  margin-bottom: 5px;
+  font-size: 1em;
+  font-weight: bold;
+}
+
+.md-p {
+  color: #555;
+  font-size: 15px;
+  margin-top: 0;
+}

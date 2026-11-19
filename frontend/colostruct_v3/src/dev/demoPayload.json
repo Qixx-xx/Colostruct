@@ -1,0 +1,189 @@
+{
+  "audio_url": "storage/audio/demo_rectal_case.wav",
+  "clean_segments": [
+    {
+      "segment_id": "seg-001",
+      "start": 0.0,
+      "end": 3.0,
+      "text": "Rectal: anterior recession, moderately to poorly differentiated adenocarcinoma."
+    },
+    {
+      "segment_id": "seg-002",
+      "start": 3.0,
+      "end": 6.0,
+      "text": "Tumor size 30 mm, no perforation."
+    },
+    {
+      "segment_id": "seg-003",
+      "start": 6.0,
+      "end": 9.0,
+      "text": "Extrude: anterior peritoneal reflection."
+    },
+    {
+      "segment_id": "seg-004",
+      "start": 9.0,
+      "end": 12.0,
+      "text": "Complete visorectal excision."
+    },
+    {
+      "segment_id": "seg-005",
+      "start": 12.0,
+      "end": 15.0,
+      "text": "Invasion to perirectal fat: lymphatic and venous invasion present."
+    },
+    {
+      "segment_id": "seg-006",
+      "start": 15.0,
+      "end": 18.0,
+      "text": "Perineal invasion absent."
+    },
+    {
+      "segment_id": "seg-007",
+      "start": 18.0,
+      "end": 21.0,
+      "text": "No metastasis at the level of Sunblock."
+    },
+    {
+      "segment_id": "seg-008",
+      "start": 21.0,
+      "end": 24.0,
+      "text": "Tumor deposits present proximal, distal, and circumferential margin negative."
+    }
+  ],
+  "fields": {
+    "tumour_site": {
+      "value": "Rectal",
+      "evidence": [
+        {
+          "segment_id": "seg-001",
+          "quote": "Rectal: anterior recession",
+          "start": 0.0,
+          "end": 3.0
+        }
+      ],
+      "status": "populated",
+      "validation_msg": null
+    },
+    "operative_procedure": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "tumour_dimension": {
+      "value": "30 mm",
+      "evidence": [
+        {
+          "segment_id": "seg-002",
+          "quote": "Tumor size 30 mm",
+          "start": 3.0,
+          "end": 6.0
+        }
+      ],
+      "status": "populated",
+      "validation_msg": null
+    },
+    "tumour_perforation": {
+      "value": "present",
+      "evidence": [
+        {
+          "segment_id": "seg-002",
+          "quote": "Tumor size 30 mm, no perforation",
+          "start": 3.0,
+          "end": 6.0
+        }
+      ],
+      "status": "flagged",
+      "validation_msg": "值校验失败：值与引用的否定/肯定极性相反"
+    },
+    "relation_to_anterior_peritoneal_reflection": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "plane_of_mesorectal_excision": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "histological_tumour_type": {
+      "value": "adenocarcinoma",
+      "evidence": [
+        {
+          "segment_id": "seg-001",
+          "quote": "moderately to poorly differentiated adenocarcinoma",
+          "start": 0.0,
+          "end": 3.0
+        }
+      ],
+      "status": "populated",
+      "validation_msg": null
+    },
+    "histological_tumour_grade": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "extent_of_invasion": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "lymphatic_and_venous_invasion": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "perineural_invasion": {
+      "value": "present",
+      "evidence": [
+        {
+          "segment_id": "seg-006",
+          "quote": "Perineal invasion absent",
+          "start": 15.0,
+          "end": 18.0
+        }
+      ],
+      "status": "flagged",
+      "validation_msg": "值校验失败：值与引用的否定/肯定极性相反"
+    },
+    "lymph_node_status": {
+      "value": "metastasis",
+      "evidence": [
+        {
+          "segment_id": "seg-007",
+          "quote": "Sunblock",
+          "start": 18.0,
+          "end": 21.0
+        }
+      ],
+      "status": "flagged",
+      "validation_msg": "值校验失败：值与引用的否定/肯定极性相反"
+    },
+    "tumour_deposits": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "proximal_and_distal_margins": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    },
+    "circumferential_margin": {
+      "value": null,
+      "evidence": [],
+      "status": "absent",
+      "validation_msg": null
+    }
+  },
+  "override_logs": [],
+  "has_block": false
+}
