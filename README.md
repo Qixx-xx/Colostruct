@@ -1,19 +1,36 @@
 # ColoStruct - AI 结直肠外科门诊助手
 
-ColoStruct 是一个面向结直肠外科医生的本地优先 Web 应用：将有序的多段音频转化为可审阅的 15 项结直肠癌病理报告草稿，并附带用于证据核对的转写文本。系统采用前后端分离结构：Streamlit 负责上传与校审，FastAPI 网关负责调用本地 ASR / LLM 流水线。
+ColoStruct 是一个面向结直肠外科医生的本地优先 Web 应用：将有序的多段音频转化为可审阅的 15 项结直肠癌病理报告草稿，并附带用于证据核对的转写文本。
+
+系统采用前后端分离结构：
+
+- **前端** `frontend/colostruct_v3/`（Vue 3 + Vite）：负责上传、审校、导出
+- **后端** `api.py`（FastAPI）：负责调用本地 ASR / LLM 流水线
+
+> 早期的 Streamlit 前端已归档到 `legacy_mvp/`，仅供回溯参考，不再维护。
+> 想查看归档前的完整状态：`git checkout v1-streamlit-mvp`。
 
 ## 📁 项目目录结构
 
 ```text
 colostruct/
 ├── api.py                      # FastAPI 网关：/api/process、/api/health、音频回放
-├── app.py                      # Streamlit 入口：路由、双栏布局
-├── ui/
-│   ├── __init__.py             # 让 Python 识别为包
-│   ├── common.py               # 公共库（字典、时间轴、卡片渲染、回调）
-│   ├── upload_panel.py         # 上传面板：诊断 / 大体 / 镜下音频上传
-│   ├── review_panel.py         # 审校面板：双栏审阅（音频/转写 ↔ 15 个字段）
-│   └── export_panel.py         # 导出面板：Markdown / JSON 导出
+├── frontend/                   # 前端（Vue 3 + Vite）
+│   └── colostruct_v3/
+│       ├── src/                # 组件、全局状态、导出逻辑、接口封装
+│       ├── public/config.js    # 运行时配置（后端地址，改这里不需要重新构建）
+│       ├── introduction/       # 前端文档：入门、迁移说明、接口契约、Git 指南
+│       ├── scripts/selfcheck.mjs # 前端自检（npm run selfcheck）
+│       ├── package.json
+│       └── vite.config.js      # 开发代理：/api 与 /storage 转发到 127.0.0.1:8000
+├── legacy_mvp/                 # 已归档的 Streamlit 前端（不再维护）
+│   ├── app.py                  # Streamlit 入口：路由、双栏布局
+│   └── ui/
+│       ├── __init__.py         # 让 Python 识别为包
+│       ├── common.py           # 公共库（字典、时间轴、卡片渲染、回调）
+│       ├── upload_panel.py     # 上传面板：诊断 / 大体 / 镜下音频上传
+│       ├── review_panel.py     # 审校面板：双栏审阅（音频/转写 ↔ 15 个字段）
+│       └── export_panel.py     # 导出面板：Markdown / JSON 导出
 ├── core/
 │   ├── pipeline.py             # 编排：mock / 真实 ASR+LLM、FullClinicalReport
 │   ├── audio_merge.py          # 音频拼接 (pydub)，16 kHz 单声道，段间 0.5 秒静音
@@ -61,7 +78,7 @@ colostruct/
 │   ├── test_service_real_schema.py
 │   └── test_service_result.py
 ├── docs/                       # 产品、技术、测试、研究文档
-├── design/                     # 前端页面设计图
+├── design/                     # 早期页面设计参考图
 ├── agent_notes/                # AI 提示词及上下文存档
 ├── .env.example                # 环境变量模板（复制为 .env）
 ├── .gitignore
@@ -97,21 +114,44 @@ ollama pull qwen3:8b
 
 ```powershell
 copy .env.example .env
-# 编辑 .env：OLLAMA 地址、WHISPER_MODEL_PATH、BACKEND_API_URL 等
+# 编辑 .env：OLLAMA 地址、WHISPER_MODEL_PATH 等
 ```
+
+> `BACKEND_API_URL` 只被归档的 Streamlit 前端使用。
+> Vue 前端默认请求同源的 `/api/process`，由 Vite 代理转发到 8000 端口，无需配置。
 
 ### 4. 启动
 
-```powershell
-# 终端 1：后端
-python api.py
+#### 终端 1：后端（必须先起）
 
-# 终端 2：前端
-python -m streamlit run app.py
+```powershell
+python api.py
 ```
 
-- 前端：http://127.0.0.1:8501
-- 后端健康检查：http://127.0.0.1:8000/api/health
+- 健康检查：http://127.0.0.1:8000/api/health
+
+#### 终端 2：前端
+
+需要 Node.js 22.18+ 或 24.12+。
+
+```powershell
+cd frontend/colostruct_v3
+npm install        # 仅首次运行需要
+npm run dev
+```
+
+- 打开 http://localhost:5173
+- 前端会自动把 `/api` 和 `/storage` 请求转发到 `127.0.0.1:8000`
+
+#### 可选：运行归档的 Streamlit 版
+
+只用于对照旧行为，功能不再更新。
+
+```powershell
+python -m streamlit run legacy_mvp/app.py
+```
+
+- 地址：http://127.0.0.1:8501
 
 ### GPU（CUDA 12.8，可选）
 
@@ -131,8 +171,29 @@ ASR_COMPUTE_TYPE=float16
 
 > 上述 cuBLAS/cuDNN 版本是 Windows + CUDA 12.8 的已验证组合；cuDNN 必须与 torch 自带版本一致，否则会出现 `CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH`。
 
+## 📚 前端文档
+
+都在 `frontend/colostruct_v3/introduction/`：
+
+| 文件 | 内容 |
+|---|---|
+| `FRONTEND_PRIMER.md` | 前端入门：怎么运行、运行原理、每个文件负责什么、怎么上传 GitHub |
+| `GIT_GUIDE.md` | Git 纯新手说明：clone / add / commit / push / 冲突处理 |
+| `MIGRATION_NOTES.md` | 从 Streamlit 迁移的对照表、与旧版的差异、验收清单 |
+| `API_CONTRACT.md` | `/api/process` 接口契约（给后端核对用） |
+| `TALK_5MIN.md` | 五分钟汇报讲稿 |
+
 ## ✅ 测试
+
+后端：
 
 ```powershell
 python -m pytest -q
+```
+
+前端自检（不需要浏览器，约 10 秒）：
+
+```powershell
+cd frontend/colostruct_v3
+npm run selfcheck
 ```
