@@ -42,3 +42,14 @@ export const API_URL = runtime.apiUrl || env.VITE_API_URL || '/api/process'
  * 具体规则见 src/media.js。
  */
 export const MEDIA_BASE = trimSlash(runtime.mediaBase ?? env.VITE_MEDIA_BASE_URL ?? '')
+
+/**
+ * 请求超时（毫秒），默认 300 秒。
+ *
+ * 真实 ASR + LLM 在 CPU 上处理几分钟音频可能超过这个时间，
+ * 一旦超时前端会主动断开并提示"连不上后端"，很容易被误判成后端没启动。
+ * 联调时如果 smoke_api.py 报告耗时超过 300 秒，就在这里调大。
+ */
+export const REQUEST_TIMEOUT_MS = Number(
+  runtime.requestTimeoutMs ?? env.VITE_REQUEST_TIMEOUT_MS ?? 300_000,
+)

@@ -9,6 +9,7 @@
 // window.__COLOSTRUCT_CONFIG__ = {
 //   apiUrl: 'http://127.0.0.1:8000/api/process',
 //   mediaBase: 'http://127.0.0.1:8000',
+//   requestTimeoutMs: 900000,
 // }
 //
 // 说明：
@@ -16,4 +17,6 @@
 //              （开发时由 vite.config.js 的 proxy 转发到 127.0.0.1:8000）
 //   mediaBase  音频地址前缀。留空 = 同源（拼出 /storage/audio/...）
 //              也可以填 http://127.0.0.1:8000 直连后端
+//   requestTimeoutMs  请求超时毫秒数，留空 = 300000（5 分钟）
+//              真实 ASR+LLM 在 CPU 上可能更久，联调时按 smoke_api.py 报的耗时调大
 window.__COLOSTRUCT_CONFIG__ = window.__COLOSTRUCT_CONFIG__ || {}

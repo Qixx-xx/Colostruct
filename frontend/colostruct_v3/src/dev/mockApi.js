@@ -24,12 +24,23 @@ export const DEMO_STEP_DELAY_MS = 300
  * @param {{simulateFail?: boolean}} options
  */
 export function buildMockPayload({ simulateFail = false } = {}) {
+  let data = null
+  if (!simulateFail) {
+    data = structuredClone(demoModulePayload)
+    // 演示数据里的 audio_url 是 "storage/audio/demo_rectal_case.wav"，
+    // 但这个文件不在仓库里（storage/ 被 .gitignore 忽略）。
+    // 保留它会让前端去请求 /storage/...，连不上后端时终端刷
+    //   [vite] http proxy error: ... ECONNREFUSED
+    // 而浏览器里只得到一个坏掉的播放器。
+    // 演示模式下本来就没有音频可播，置空让界面显示
+    // "🔇 Audio unavailable for this track"，既诚实又不吵。
+    data.audio_url = ''
+  }
+
   return {
     diagnosis: simulateFail
       ? { status: 'failed', data: null }
-      // structuredClone：JSON 模块对象是共享的只读模块，直接塞进 reactive
-      // 再被 Vue 代理会有风险，所以克隆一份干净的副本。
-      : { status: 'success', data: structuredClone(demoModulePayload) },
+      : { status: 'success', data },
     macro: { status: 'not_uploaded', data: null },
     micro: { status: 'not_uploaded', data: null },
   }

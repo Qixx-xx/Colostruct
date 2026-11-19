@@ -15,8 +15,8 @@
 // 详情见同目录 API_CONTRACT.md。
 // ============================================================================
 
-// 接口地址来自 config.js（运行时可覆盖，见该文件说明）
-import { API_URL } from './config.js'
+// 接口地址和超时都来自 config.js（运行时可覆盖，见该文件说明）
+import { API_URL, REQUEST_TIMEOUT_MS } from './config.js'
 
 export { API_URL }
 
@@ -41,9 +41,10 @@ export async function processAudio({ diag, macro, micro } = {}) {
 
   let res
   try {
-    // upload_panel.py:122 —— 原来设了 timeout=300，这里用 AbortController 等价实现
+    // upload_panel.py:122 —— 原来设了 timeout=300，这里用 AbortController 等价实现。
+    // 超时时长可在 config.js 的 requestTimeoutMs 调整（真实 ASR+LLM 可能超过 300 秒）。
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 300_000)
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
     try {
       res = await fetch(API_URL, { method: 'POST', body: form, signal: controller.signal })
     } finally {
@@ -51,9 +52,15 @@ export async function processAudio({ diag, macro, micro } = {}) {
     }
   } catch (e) {
     // upload_panel.py:163-166 的 ConnectionError 分支
+    const hint =
+      e?.name === 'AbortError'
+        ? `\nRequest timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s. ` +
+          'Raise requestTimeoutMs in config.js if the pipeline legitimately takes longer.'
+        : ''
     throw new ApiError(
       `❌ Cannot connect to backend service (${API_URL}). ` +
-        `Please ensure B group's backend is running and the IP address is correct.`,
+        `Please ensure B group's backend is running and the IP address is correct.` +
+        hint,
     )
   }
 

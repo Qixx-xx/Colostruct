@@ -25,7 +25,7 @@ Run from repository root. Target Python version is 3.11.
 ```powershell
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m streamlit run app.py
+.\.venv\Scripts\python.exe -m streamlit run legacy_mvp\app.py
 .\.venv\Scripts\python.exe -m pytest
 ```
 Install ffmpeg separately and ensure it is on `PATH`. Only run pytest if the test suite exists. Do not claim commands or tests passed unless actually run.
