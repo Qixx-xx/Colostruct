@@ -1,5 +1,135 @@
-ASR_RAW,CORRECTED
-colon,colon
-tumour,tumor
-tumour site,tumor site
-lymph node,lymph node
+﻿ASR_RAW,CORRECTED
+secombe,cecum
+secum,cecum
+sea cum,cecum
+seacum,cecum
+caecum,cecum
+hysstology,histology
+hisstology,histology
+hystology,histology
+his tology,histology
+histologi,histology
+adeno carcinoma,adenocarcinoma
+adeno-carcinoma,adenocarcinoma
+add no carcinoma,adenocarcinoma
+adenoca rcinoma,adenocarcinoma
+adenocarsinoma,adenocarcinoma
+adenocarinoma,adenocarcinoma
+adenocacinoma,adenocarcinoma
+adeno squamous,adenosquamous
+micro papillary,micropapillary
+peri neural,perineural
+perineurial,perineural
+perry neural,perineural
+peri-neural,perineural
+perinural,perineural
+meso rectal,mesorectal
+meso-rectal,mesorectal
+messo rectal,mesorectal
+mesorectile,mesorectal
+circum ferential,circumferential
+circumfrential,circumferential
+circumferencial,circumferential
+circumferntial,circumferential
+circumfrancial,circumferential
+muscularis pro pria,muscularis propria
+muscularis pro pia,muscularis propria
+muscularis pro-pria,muscularis propria
+muscularis propra,muscularis propria
+sub mucosa,submucosa
+submukosa,submucosa
+sub serosa,subserosa
+sub-serosa,subserosa
+subcerosa,subserosa
+sub serossa,subserosa
+peri colic,pericolic
+paracolic,pericolic
+peri rectal,perirectal
+pararectal,perirectal
+peri-toneal,peritoneal
+peritonial,peritoneal
+peri toneum,peritoneum
+peritonium,peritoneum
+peritoneal reflexion,peritoneal reflection
+perforasion,perforation
+perforration,perforation
+anterior re section,anterior resection
+anteri or,anterior
+anterir,anterior
+hemi colectomy,hemicolectomy
+hemi-colectomy,hemicolectomy
+hemi collectomy,hemicolectomy
+hemicolectomi,hemicolectomy
+laproscopic,laparoscopic
+laparoscopik,laparoscopic
+sig moid,sigmoid
+sigmoud,sigmoid
+sigmoit,sigmoid
+re section,resection
+resecti on,resection
+resekction,resection
+margine,margin
+margens,margins
+lympho vascular,lymphovascular
+lymph vascular,lymphovascular
+lymphovasculer,lymphovascular
+meta static,metastatic
+metastetic,metastatic
+metastisis,metastasis
+metastusis,metastasis
+desmo plastic,desmoplastic
+desmoplastik,desmoplastic
+desmoplasic,desmoplastic
+anti mesenteric,anti-mesenteric
+mesentry,mesentery
+mesentary,mesentery
+mesenterik,mesenteric
+mesentric,mesenteric
+mytosis,mitosis
+mitos is,mitosis
+nucleolli,nucleoli
+nucleo lie,nucleoli
+pleomorfism,pleomorphism
+pleo morphism,pleomorphism
+cribiform,cribriform
+cribreform,cribriform
+cribri form,cribriform
+displasia,dysplasia
+dysplazia,dysplasia
+adeno ma,adenoma
+adenomah,adenoma
+tubulo villous,tubulovillous
+tubulo-villous,tubulovillous
+ileo cecal,ileocecal
+ileosecal,ileocecal
+ileocaecal,ileocecal
+necros is,necrosis
+necrossis,necrosis
+vesiculer,vesicular
+vesicula,vesicular
+vascula,vascular
+vaskular,vascular
+pedikel,pedicle
+peddicle,pedicle
+apeks,apex
+malignent,malignant
+malignand,malignant
+serossa,serosa
+seroza,serosa
+adipoze,adipose
+adipoz,adipose
+differenti ated,differentiated
+diferentiated,differentiated
+differentated,differentiated
+moderatly,moderately
+dimenshon,dimension
+circumferense,circumference
+appendicks,appendix
+appandix,appendix
+polip,polyp
+limph node,lymph node
+limf node,lymph node
+prominant,prominent
+tumor,tumour
+tumor deposits,tumour deposits
+tumor site,tumour site
